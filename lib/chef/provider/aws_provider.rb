@@ -78,6 +78,10 @@ class Chef::Provider::AwsProvider < Chef::Provider::LWRPBase
     @auto_scaling ||= aws_init { AWS::AutoScaling.new }
   end
 
+  def r53
+    @r53 ||= aws_init { AWS::Route53.new }
+  end
+
   private
   def aws_init
     credentials = @credentials.default
