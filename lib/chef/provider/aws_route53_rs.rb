@@ -8,7 +8,7 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
         if existing_rs == nil
             converge_by "Creating new Route 53 RecordSet:#{new_resource.name}" do
                 begin
-                    #create_options
+                    consolidate_resource_records
                     rrsets = r53.hosted_zones[new_resource.hosted_zone].rrsets
                     rrsets.create(new_resource.name, new_resource.type, new_resource.options)
                 rescue => e
@@ -16,8 +16,7 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
                 end
             end
         else
-            new_resource.type existing_rs.type
-            #new_resource.options existing_rs.options
+            Chef::Log.warn("Route 53 Recordset '#{new_resource.name}, #{new_resource.type}' already exists. Call modify action to update")
         end
     end
 
@@ -26,16 +25,20 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
             action_create
         else
             converge_by "Updating Route 53 Record Set #{new_resource.name}" do
-                begin
-                    #Chef::Log.warn(existing_rs.options != new_resource.options)
-                    #if existing_rs.options != new_resource.options
-                        ip = get_ip new_resource.machine, false
-                        Chef::Log.warn(ip)
-                        existing_rs.update(new_resource.options)
-                    #end
-                rescue => e
-                    Chef::Application.fatal!("Error Modifying RecordSet: #{e}")
-                end
+                #begin
+                    consolidate_resource_records
+                    #if they gave raw_options, don't pick through them, just blindly write them
+                    #TODO: not the most convergent but I don't want to manually assemble
+                    if new_resource.raw_options
+                        existing_rs.update(new_resource.raw_options)
+                    elsif changes_found
+                        existing_rs.update
+                    else
+                        Chef::Log.warn("No changes needed for DNS entry '#{new_resource.name}, #{new_resource.type}'")
+                    end
+                #rescue => e
+                #    Chef::Application.fatal!("Error Modifying RecordSet: #{e}")
+                #end
             end
         end
     end
@@ -49,8 +52,6 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
     end
 
     def existing_rs
-        #remove this when chef-provisioning#242 is fixed
-        new_resource.hydrate
         #if user didn't add suffix, add it
         if not new_resource.name.end_with? "."
             new_resource.name = new_resource.name + "."
@@ -69,6 +70,7 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
 
     def get_ip(machine, public=true)
         begin
+            Chef::Log.warn("getting IP for machine: #{machine}")
             spec = Chef::Provisioning::ChefMachineSpec.get(machine)
             if spec == nil
                 Chef::Application.fatal!("Could not find machine #{machine}")
@@ -84,5 +86,24 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
         rescue => e
             Chef::Application.fatal!("Error Finding Public IP for machine #{machine}: #{e}")
         end
+    end
+
+    def consolidate_resource_records
+        @addresses ||= []
+        if new_resource.machines
+            @addresses = new_resource.machines.map { |machine| { value: get_ip(machine)} }
+        end
+        if new_resource.addresses
+            @addresses << new_resource.addresses.map { |address|  { value: address} }
+        end
+    end
+
+    def changes_found
+        Chef::Log.warn("ttl: #{existing_rs.ttl}, weight: #{existing_rs.weight}, resource_records: #{existing_rs.resource_records}")
+        tmp = new_resource.ttl and existing_rs.ttl = tmp if tmp != existing_rs.ttl
+        tmp = new_resource.weight and existing_rs.weight = tmp if tmp != existing_rs.weight
+        tmp = @addresses and existing_rs.resource_records = tmp if tmp != existing_rs.resource_records
+
+        Chef::Log.warn("ttl: #{existing_rs.ttl}, weight: #{existing_rs.weight}, resource_records: #{existing_rs.resource_records}")
     end
 end
