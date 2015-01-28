@@ -10,7 +10,14 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
                 begin
                     consolidate_resource_records
                     rrsets = r53.hosted_zones[new_resource.hosted_zone].rrsets
-                    rrsets.create(new_resource.name, new_resource.type, new_resource.options)
+                    rset = rrsets.create(new_resource.name, new_resource.type)
+                    if new_resource.raw_options
+                        rset.update(new_resource.raw_options)
+                    elsif changes_found
+                        rset.update
+                    else
+                        Chef::Log.warn("Created DNS entry '#{new_resource.name}, #{new_resource.type}' with default config")
+                    end
                 rescue => e
                     Chef::Application.fatal!("Error Creating RecordSet: #{e}")
                 end
@@ -24,30 +31,32 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
         if existing_rs == nil
             action_create
         else
-            converge_by "Updating Route 53 Record Set #{new_resource.name}" do
-                #begin
-                    consolidate_resource_records
-                    #if they gave raw_options, don't pick through them, just blindly write them
-                    #TODO: not the most convergent but I don't want to manually assemble
-                    if new_resource.raw_options
+            begin
+                consolidate_resource_records
+                #if they gave raw_options, don't pick through them, just blindly write them
+                #TODO: not convergent.
+                if new_resource.raw_options
+                    converge_by "Updating Route 53 Record Set #{new_resource.name} with raw options" do
                         existing_rs.update(new_resource.raw_options)
-                    elsif changes_found
-                        existing_rs.update
-                    else
-                        Chef::Log.warn("No changes needed for DNS entry '#{new_resource.name}, #{new_resource.type}'")
                     end
-                #rescue => e
-                #    Chef::Application.fatal!("Error Modifying RecordSet: #{e}")
-                #end
+                elsif changes_found
+                    converge_by "Updating Route 53 Record Set #{new_resource.name}" do
+                        existing_rs.update
+                    end
+                else
+                    Chef::Log.warn("No changes needed for DNS entry '#{new_resource.name}, #{new_resource.type}'")
+                end
+            rescue => e
+                Chef::Application.fatal!("Error Modifying RecordSet: #{e}")
             end
         end
     end
 
     action :delete do
         if existing_rs
-          converge_by "Deleting Route 53 Record Set #{new_resource.name}" do
-            existing_rs.delete
-          end
+            converge_by "Deleting Route 53 Record Set #{new_resource.name}" do
+                existing_rs.delete
+            end
         end
     end
 
@@ -99,11 +108,10 @@ class Chef::Provider::AwsRoute53Rs < Chef::Provider::AwsProvider
     end
 
     def changes_found
-        Chef::Log.warn("ttl: #{existing_rs.ttl}, weight: #{existing_rs.weight}, resource_records: #{existing_rs.resource_records}")
-        tmp = new_resource.ttl and existing_rs.ttl = tmp if tmp != existing_rs.ttl
-        tmp = new_resource.weight and existing_rs.weight = tmp if tmp != existing_rs.weight
-        tmp = @addresses and existing_rs.resource_records = tmp if tmp != existing_rs.resource_records
-
-        Chef::Log.warn("ttl: #{existing_rs.ttl}, weight: #{existing_rs.weight}, resource_records: #{existing_rs.resource_records}")
+        change = false
+        tmp = new_resource.ttl and ((change, existing_rs.ttl = true, tmp) if tmp != existing_rs.ttl)
+        tmp = new_resource.weight and ((change, existing_rs.weight = true, tmp) if tmp != existing_rs.weight)
+        tmp = @addresses and ((change, existing_rs.resource_records = true, tmp) if tmp != existing_rs.resource_records)
+        change
     end
 end
