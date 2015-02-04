@@ -15,10 +15,7 @@ require 'chef/provisioning/aws_driver/credentials'
 
 require 'yaml'
 require 'aws-sdk-v1'
-<<<<<<< HEAD
 
-=======
->>>>>>> e966151c880b3906dbd7fc307fd66046fe411802
 # loads the entire aws-sdk
 AWS.eager_autoload!
 
@@ -759,11 +756,7 @@ module AWSDriver
     def create_many_instances(num_servers, bootstrap_options, parallelizer)
       parallelizer.parallelize(1.upto(num_servers)) do |i|
         clean_bootstrap_options = Marshal.load(Marshal.dump(bootstrap_options))
-<<<<<<< HEAD
         instance = ec2.instances.create(clean_bootstrap_options.to_hash)
-=======
-        instance = ec2.instances.create(clean_bootstrap_options)
->>>>>>> e966151c880b3906dbd7fc307fd66046fe411802
 
         yield instance if block_given?
         instance
