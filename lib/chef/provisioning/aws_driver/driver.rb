@@ -15,7 +15,10 @@ require 'chef/provisioning/aws_driver/credentials'
 
 require 'yaml'
 require 'aws-sdk-v1'
+<<<<<<< HEAD
 
+=======
+>>>>>>> e966151c880b3906dbd7fc307fd66046fe411802
 # loads the entire aws-sdk
 AWS.eager_autoload!
 
@@ -445,6 +448,20 @@ module AWSDriver
       end
     end
 
+    def instances_for(machine_specs)
+      result = {}
+      machine_specs.each do |machine_spec|
+        if machine_spec.location && machine_spec.location['instance_id']
+          if machine_spec.location['driver_url'] != driver_url
+            raise "Switching a machine's driver from #{machine_spec.location['driver_url']} to #{driver_url} is not currently supported!  Use machine :destroy and then re-create the machine on the new driver."
+          end
+          #returns nil if not found
+          result[machine_spec] = ec2.instances[machine_spec.location['instance_id']]
+        end
+      end
+      result
+    end
+
     def transport_for(machine_spec, machine_options, instance)
       # TODO winrm
       create_ssh_transport(machine_spec, machine_options, instance)
@@ -742,7 +759,11 @@ module AWSDriver
     def create_many_instances(num_servers, bootstrap_options, parallelizer)
       parallelizer.parallelize(1.upto(num_servers)) do |i|
         clean_bootstrap_options = Marshal.load(Marshal.dump(bootstrap_options))
+<<<<<<< HEAD
         instance = ec2.instances.create(clean_bootstrap_options.to_hash)
+=======
+        instance = ec2.instances.create(clean_bootstrap_options)
+>>>>>>> e966151c880b3906dbd7fc307fd66046fe411802
 
         yield instance if block_given?
         instance
